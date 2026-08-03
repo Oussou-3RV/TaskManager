@@ -1,0 +1,60 @@
+:root {
+    /* Couleurs de fond */
+    --bg-app: #0F1117;
+    --bg-surface: #1A1D27;
+    --bg-hover: #2D3148;
+    --bg-active: #1E2340;
+  
+    /* Bordures */
+    --border: #2D3148;
+    --border-light: #1E2133;
+  
+    /* Texte */
+    --text-primary: #E8EAED;
+    --text-secondary: #8B92A8;
+  
+    /* Accent */
+    --accent: #4F6EF7;
+    --accent-bg: #1E2340;
+    --accent-border: #2D3B80;
+  
+    /* Statuts */
+    --success: #22C55E;
+    --success-bg: #0F2A1A;
+    --success-border: #166534;
+  
+    --warning: #F59E0B;
+    --warning-bg: #2A1F0A;
+    --warning-border: #854D0E;
+  
+    --danger: #EF4444;
+    --danger-bg: #2A0F0F;
+    --danger-border: #7F1D1D;
+  
+    /* Espacements */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 20px;
+    --space-2xl: 24px;
+  
+    /* Typographie */
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --text-xs: 11px;
+    --text-sm: 12px;
+    --text-md: 13px;
+    --text-base: 14px;
+    --text-lg: 15px;
+  
+    /* Bordures arrondies */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+  
+    /* Sidebar */
+    --sidebar-width: 200px;
+    --topbar-height: 52px;
+  }
