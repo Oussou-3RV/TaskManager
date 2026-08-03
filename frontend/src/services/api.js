@@ -30,4 +30,9 @@ api.interceptors.response.use(
   },
 )
 
+// Le backend renvoie les erreurs au format application/problem+json (title/detail).
+export function errorMessage(err, fallback) {
+  return err.response?.data?.detail || fallback
+}
+
 export default api
