@@ -4,11 +4,14 @@ import com.orchestration.backend.dto.request.TaskRequest;
 import com.orchestration.backend.dto.response.PlacementDecisionResponse;
 import com.orchestration.backend.dto.response.TaskResponse;
 import com.orchestration.backend.entity.*;
+import com.orchestration.backend.exception.TaskNotCancellableException;
+import com.orchestration.backend.exception.TaskNotFoundException;
 import com.orchestration.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -116,16 +119,17 @@ public class TaskService {
     }
 
     @Transactional
-    public TaskResponse cancel(UUID taskId, String username) {
+    public void cancel(UUID taskId, String username) {
         Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Tache non trouvee"));
+                .orElseThrow(() -> new TaskNotFoundException("Tache introuvable: " + taskId));
 
         if (!task.getSubmittedBy().getUsername().equals(username)) {
-            throw new RuntimeException("Vous ne pouvez pas annuler cette tache");
+            throw new AccessDeniedException("Vous ne pouvez pas annuler cette tache");
         }
 
         if (!task.getStatus().equals("PENDING")) {
-            throw new RuntimeException("Seules les taches PENDING peuvent etre annulees");
+            throw new TaskNotCancellableException(
+                    "Seules les taches PENDING peuvent etre annulees (statut actuel: " + task.getStatus() + ")");
         }
 
         task.setStatus("CANCELLED");
@@ -133,8 +137,6 @@ public class TaskService {
 
         auditService.log("TASK_CANCELLED", username, "task",
                 task.getId().toString(), null);
-
-        return toTaskResponse(task);
     }
 
     private PlacementDecisionResponse handleRejection(Task task, String policy,
