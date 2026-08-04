@@ -2,8 +2,14 @@
     <div class="tasks">
         <BaseCard title="Soumettre une tâche">
             <form class="tasks__form" @submit.prevent="handleSubmit">
-                <BaseInput v-model="cpuRequired" label="CPU requis" type="number" placeholder="1.5" />
-                <BaseInput v-model="memoryRequiredMb" label="Mémoire requise (Mo)" type="number" placeholder="512" />
+                <BaseInput v-model="cpuRequired" label="CPU requis" type="number" placeholder="1.5" :error="errors.cpuRequired" />
+                <BaseInput
+                    v-model="memoryRequiredMb"
+                    label="Mémoire requise (Mo)"
+                    type="number"
+                    placeholder="512"
+                    :error="errors.memoryRequiredMb"
+                />
                 <BaseSelect v-model="priority" label="Priorité" :options="priorityOptions" />
                 <BaseButton type="submit" :loading="submitting">Soumettre</BaseButton>
             </form>
@@ -42,7 +48,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import api from '@/services/api'
+import api, { errorMessage } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -60,6 +66,7 @@ const cpuRequired = ref('')
 const memoryRequiredMb = ref('')
 const priority = ref('normal')
 const submitting = ref(false)
+const errors = ref({ cpuRequired: '', memoryRequiredMb: '' })
 
 const priorityOptions = [
     { value: 'low', label: 'Basse' },
@@ -120,7 +127,19 @@ async function loadTasks() {
     }
 }
 
+function validate() {
+    errors.value = { cpuRequired: '', memoryRequiredMb: '' }
+    if (!(Number(cpuRequired.value) >= 0.1)) {
+        errors.value.cpuRequired = 'Le CPU doit être supérieur à 0.1'
+    }
+    if (!(Number(memoryRequiredMb.value) >= 1)) {
+        errors.value.memoryRequiredMb = 'La mémoire doit être supérieure à 0'
+    }
+    return !errors.value.cpuRequired && !errors.value.memoryRequiredMb
+}
+
 async function handleSubmit() {
+    if (!validate()) return
     submitting.value = true
     try {
         const { data } = await api.post(
@@ -133,14 +152,16 @@ async function handleSubmit() {
             { headers: { 'Idempotency-Key': crypto.randomUUID() } },
         )
         notification[data.accepted ? 'success' : 'error'](
-            data.accepted ? `Tâche placée sur ${data.selectedNodeId}.` : `Tâche rejetée : ${data.reason}`,
+            data.accepted
+                ? `Tâche placée sur ${data.selectedNodeId} — ${data.reason}`
+                : `Tâche rejetée — ${data.reason}`,
         )
         cpuRequired.value = ''
         memoryRequiredMb.value = ''
         priority.value = 'normal'
         loadTasks()
-    } catch {
-        notification.error('Échec de la soumission de la tâche.')
+    } catch (err) {
+        notification.error(errorMessage(err, 'Échec de la soumission de la tâche.'))
     } finally {
         submitting.value = false
     }
@@ -151,8 +172,8 @@ async function cancelTask(id) {
         await api.delete(`/api/v1/tasks/${id}`)
         notification.success('Tâche annulée.')
         loadTasks()
-    } catch {
-        notification.error("Impossible d'annuler la tâche.")
+    } catch (err) {
+        notification.error(errorMessage(err, "Impossible d'annuler la tâche."))
     }
 }
 

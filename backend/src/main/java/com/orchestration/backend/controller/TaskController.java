@@ -44,9 +44,10 @@ public class TaskController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<TaskResponse> cancel(
+    public ResponseEntity<Void> cancel(
             @PathVariable UUID id,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(taskService.cancel(id, userDetails.getUsername()));
+        taskService.cancel(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
     }
 }
