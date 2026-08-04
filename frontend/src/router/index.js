@@ -40,6 +40,12 @@ const router = createRouter({
           meta: { title: 'Règles', roles: ['OPERATOR', 'ADMIN', 'AUDITOR'] },
         },
         {
+          path: 'placements',
+          name: 'placements',
+          component: () => import('@/views/PlacementsView.vue'),
+          meta: { title: 'Suivi des placements', roles: ['OPERATOR', 'ADMIN', 'AUDITOR'] },
+        },
+        {
           path: 'audit',
           name: 'audit',
           component: () => import('@/views/AuditView.vue'),

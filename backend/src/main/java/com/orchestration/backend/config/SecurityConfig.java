@@ -42,6 +42,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/machines/**").hasAnyRole("OPERATOR", "ADMIN", "AUDITOR")
                         // Taches — operateur et admin
                         .requestMatchers("/api/v1/tasks/**").hasAnyRole("OPERATOR", "ADMIN")
+                        // Historique des decisions de placement — lecture pour tous les roles
+                        .requestMatchers(HttpMethod.GET, "/api/v1/placements/**").hasAnyRole("OPERATOR", "ADMIN", "AUDITOR")
                         // Regles — lecture pour tous, modification admin seulement
                         .requestMatchers(HttpMethod.GET, "/api/v1/rules/**").hasAnyRole("OPERATOR", "ADMIN", "AUDITOR")
                         .requestMatchers("/api/v1/rules/**").hasRole("ADMIN")

@@ -37,6 +37,7 @@ const navItems = [
     { to: '/tasks', label: 'Soumettre', icon: '➤', roles: ['OPERATOR', 'ADMIN'] },
     { to: '/machines', label: 'Machines', icon: '▦', roles: ['OPERATOR', 'ADMIN', 'AUDITOR'] },
     { to: '/rules', label: 'Règles', icon: '⚙', roles: ['OPERATOR', 'ADMIN', 'AUDITOR'] },
+    { to: '/placements', label: 'Placements', icon: '⇄', roles: ['OPERATOR', 'ADMIN', 'AUDITOR'] },
     { to: '/audit', label: 'Audit', icon: '▤', roles: ['AUDITOR', 'ADMIN'] },
 ]
 
