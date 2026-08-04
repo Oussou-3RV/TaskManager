@@ -7,8 +7,12 @@ import com.orchestration.backend.repository.AuditEventRepository;
 import com.orchestration.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+
+import java.time.OffsetDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +41,16 @@ public class AuditService {
 
     public Page<AuditEventResponse> getByEventType(String eventType, Pageable pageable) {
         return auditEventRepository.findByEventType(eventType, pageable).map(this::toResponse);
+    }
+
+    public Page<AuditEventResponse> search(String eventType, String actor, String machine, String policy,
+                                            OffsetDateTime from, OffsetDateTime to, Pageable pageable) {
+        // Requete native : le tri doit utiliser le nom de colonne SQL (created_at),
+        // pas le nom de propriete Java (createdAt) injecte par defaut par Pageable.
+        Pageable nativePageable = PageRequest.of(
+                pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.ASC, "created_at"));
+        return auditEventRepository.search(eventType, actor, machine, policy, from, to, nativePageable)
+                .map(this::toResponse);
     }
 
     private AuditEventResponse toResponse(AuditEvent event) {
