@@ -55,7 +55,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import api from '@/services/api'
+import api, { errorMessage } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -104,8 +104,8 @@ async function loadMachines() {
     try {
         const { data } = await api.get('/api/v1/machines')
         machines.value = data
-    } catch {
-        notification.error('Impossible de charger les machines.')
+    } catch (err) {
+        notification.error(errorMessage(err, 'Impossible de charger les machines.'))
     } finally {
         loadingMachines.value = false
     }
@@ -117,8 +117,8 @@ async function loadTasks() {
     try {
         const { data } = await api.get('/api/v1/tasks', { params: { all: true, size: 100 } })
         tasks.value = data.content
-    } catch {
-        notification.error('Impossible de charger les tâches.')
+    } catch (err) {
+        notification.error(errorMessage(err, 'Impossible de charger les tâches.'))
     } finally {
         loadingTasks.value = false
     }
