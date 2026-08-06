@@ -99,6 +99,11 @@ public class TaskService {
         task.setStatus(result.getAccepted() ? "PLACED" : "REJECTED");
         taskRepository.save(task);
 
+        // 8b. Reserver les ressources de la machine retenue
+        if (result.getAccepted()) {
+            decrementMachineResources(result.getSelectedNodeId(), task.getCpuRequired(), task.getMemoryRequiredMb());
+        }
+
         // 9. Audit
         String eventType = result.getAccepted() ? "TASK_PLACED" : "TASK_REJECTED";
         auditService.log(eventType, username, "task",
@@ -127,9 +132,18 @@ public class TaskService {
             throw new AccessDeniedException("Vous ne pouvez pas annuler cette tache");
         }
 
-        if (!task.getStatus().equals("PENDING")) {
+        String status = task.getStatus();
+        if (!status.equals("PENDING") && !status.equals("PLACED")) {
             throw new TaskNotCancellableException(
-                    "Seules les taches PENDING peuvent etre annulees (statut actuel: " + task.getStatus() + ")");
+                    "Seules les taches PENDING ou PLACED peuvent etre annulees (statut actuel: " + status + ")");
+        }
+
+        if (status.equals("PLACED")) {
+            decisionRepository.findByTask(task).ifPresent(decision -> {
+                if (decision.getSelectedNodeId() != null) {
+                    restoreMachineResources(decision.getSelectedNodeId(), task.getCpuRequired(), task.getMemoryRequiredMb());
+                }
+            });
         }
 
         task.setStatus("CANCELLED");
@@ -137,6 +151,22 @@ public class TaskService {
 
         auditService.log("TASK_CANCELLED", username, "task",
                 task.getId().toString(), null);
+    }
+
+    private void decrementMachineResources(String machineId, BigDecimal cpu, Integer memoryMb) {
+        machineRepository.findById(machineId).ifPresent(machine -> {
+            machine.setCpuAvailable(machine.getCpuAvailable().subtract(cpu));
+            machine.setMemoryAvailableMb(machine.getMemoryAvailableMb() - memoryMb);
+            machineRepository.save(machine);
+        });
+    }
+
+    private void restoreMachineResources(String machineId, BigDecimal cpu, Integer memoryMb) {
+        machineRepository.findById(machineId).ifPresent(machine -> {
+            machine.setCpuAvailable(machine.getCpuAvailable().add(cpu));
+            machine.setMemoryAvailableMb(machine.getMemoryAvailableMb() + memoryMb);
+            machineRepository.save(machine);
+        });
     }
 
     private PlacementDecisionResponse handleRejection(Task task, String policy,

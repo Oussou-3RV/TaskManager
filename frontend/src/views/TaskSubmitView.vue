@@ -32,7 +32,7 @@
                 <template #createdAt="{ value }">{{ formatDate(value) }}</template>
                 <template #actions="{ row }">
                     <BaseButton
-                        v-if="row.status === 'PENDING' && row.submittedBy === auth.username"
+                        v-if="['PENDING', 'PLACED'].includes(row.status) && row.submittedBy === auth.username"
                         variant="danger"
                         size="sm"
                         @click="cancelTask(row.id)"
