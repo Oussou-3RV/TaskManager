@@ -16,7 +16,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import api from '@/services/api'
+import api, { errorMessage } from '@/services/api'
 import { useNotificationStore } from '@/stores/notification'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import MachineCard from '@/components/MachineCard.vue'
@@ -34,8 +34,8 @@ async function loadMachines() {
             params: healthyOnly.value ? { healthyOnly: true } : {},
         })
         machines.value = data
-    } catch {
-        notification.error('Impossible de charger les machines.')
+    } catch (err) {
+        notification.error(errorMessage(err, 'Impossible de charger les machines.'))
     } finally {
         loading.value = false
     }

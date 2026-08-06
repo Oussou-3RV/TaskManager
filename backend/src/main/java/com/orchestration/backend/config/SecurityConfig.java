@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -34,6 +35,22 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Les deux gestionnaires doivent etre explicites : sans eux, Spring Security
+                // utilise Http403ForbiddenEntryPoint par defaut pour TOUT refus (pas connecte
+                // OU role insuffisant), ce qui empeche le frontend de distinguer les deux cas.
+                .exceptionHandling(handling -> handling
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(401);
+                            response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+                            response.getWriter().write(
+                                    "{\"status\":401,\"title\":\"Unauthorized\",\"detail\":\"Authentification requise ou expiree.\"}");
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(403);
+                            response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+                            response.getWriter().write(
+                                    "{\"status\":403,\"title\":\"Forbidden\",\"detail\":\"Role insuffisant pour cette action.\"}");
+                        }))
                 .authorizeHttpRequests(auth -> auth
                         // Public
                         .requestMatchers("/api/v1/auth/**").permitAll()

@@ -26,7 +26,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import api from '@/services/api'
+import api, { errorMessage } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -69,8 +69,8 @@ async function loadRules() {
     try {
         const { data } = await api.get('/api/v1/rules')
         rules.value = data
-    } catch {
-        notification.error('Impossible de charger les règles.')
+    } catch (err) {
+        notification.error(errorMessage(err, 'Impossible de charger les règles.'))
     } finally {
         loading.value = false
     }
@@ -84,8 +84,8 @@ async function handleCreate() {
         name.value = ''
         policy.value = 'balanced'
         loadRules()
-    } catch {
-        notification.error('Échec de la création de la règle.')
+    } catch (err) {
+        notification.error(errorMessage(err, 'Échec de la création de la règle.'))
     } finally {
         creating.value = false
     }
@@ -95,8 +95,8 @@ async function toggleRule(id) {
     try {
         await api.put(`/api/v1/rules/${id}/toggle`)
         loadRules()
-    } catch {
-        notification.error('Impossible de modifier la règle.')
+    } catch (err) {
+        notification.error(errorMessage(err, 'Impossible de modifier la règle.'))
     }
 }
 
