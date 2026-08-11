@@ -1,0 +1,49 @@
+services:
+
+  db:
+    image: postgres:16-alpine
+    container_name: taskmanager-loadtest-db
+    environment:
+      POSTGRES_DB: orchestration
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - loadtest_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d orchestration"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  placement:
+    build: ../placement-service
+    container_name: taskmanager-loadtest-placement
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ../backend
+    container_name: taskmanager-loadtest-backend
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/orchestration
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: secret
+      JWT_SECRET: loadtest-only-secret-key-not-for-production-256bits
+      PLACEMENT_SERVICE_URL: http://placement:8000
+    depends_on:
+      db:
+        condition: service_healthy
+      placement:
+        condition: service_healthy
+
+volumes:
+  loadtest_postgres_data:

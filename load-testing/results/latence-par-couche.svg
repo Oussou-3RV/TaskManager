@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" font-family="system-ui, -apple-system, sans-serif">
+<rect width="760" height="420" fill="#ffffff"/>
+<text x="70" y="22" font-size="16" font-weight="700" fill="#0b0b0b">Decomposition de la latence par couche</text>
+<text x="70" y="40" font-size="11" fill="#6b6a66">p99 empile, en millisecondes — 10 / 50 / 100 clients concurrents</text>
+<line x1="70" x2="730" y1="360.0" y2="360.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="364.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="70" x2="730" y1="277.5" y2="277.5" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="281.5" font-size="10" fill="#898781" text-anchor="end">700</text>
+<line x1="70" x2="730" y1="195.0" y2="195.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="199.0" font-size="10" fill="#898781" text-anchor="end">1400</text>
+<line x1="70" x2="730" y1="112.5" y2="112.5" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="116.5" font-size="10" fill="#898781" text-anchor="end">2100</text>
+<line x1="70" x2="730" y1="30.0" y2="30.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="34.0" font-size="10" fill="#898781" text-anchor="end">2800ms</text>
+<polygon points="103.0,317.5 400.0,352.8 697.0,351.8 697.0,360.0 400.0,360.0 103.0,360.0" fill="#2a78d6" opacity="0.88"/>
+<polygon points="103.0,288.2 400.0,344.2 697.0,337.7 697.0,351.8 400.0,352.8 103.0,317.5" fill="#eb6834" opacity="0.88"/>
+<polygon points="103.0,263.7 400.0,311.7 697.0,294.6 697.0,337.7 400.0,344.2 103.0,288.2" fill="#1baf7a" opacity="0.88"/>
+<polygon points="103.0,234.1 400.0,276.6 697.0,231.8 697.0,294.6 400.0,311.7 103.0,263.7" fill="#eda100" opacity="0.88"/>
+<line x1="70" x2="70" y1="30" y2="360" stroke="#c3c2b7"/>
+<line x1="70" x2="730" y1="360" y2="360" stroke="#c3c2b7"/>
+<text x="103.0" y="380" font-size="11" font-weight="600" fill="#52514e" text-anchor="middle">10 clients</text>
+<text x="400.0" y="380" font-size="11" font-weight="600" fill="#52514e" text-anchor="middle">50 clients</text>
+<text x="697.0" y="380" font-size="11" font-weight="600" fill="#52514e" text-anchor="middle">100 clients</text>
+<rect x="70" y="393" width="10" height="10" rx="2" fill="#2a78d6"/>
+<text x="85" y="402" font-size="10.5" fill="#52514e">Base de donnees</text>
+<rect x="240" y="393" width="10" height="10" rx="2" fill="#eb6834"/>
+<text x="255" y="402" font-size="10.5" fill="#52514e">Logique de placement</text>
+<rect x="410" y="393" width="10" height="10" rx="2" fill="#1baf7a"/>
+<text x="425" y="402" font-size="10.5" fill="#52514e">Reseau + frontend</text>
+<rect x="580" y="393" width="10" height="10" rx="2" fill="#eda100"/>
+<text x="595" y="402" font-size="10.5" fill="#52514e">API + serialisation</text>
+</svg>
