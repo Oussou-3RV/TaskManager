@@ -7,6 +7,7 @@ import com.orchestration.backend.entity.*;
 import com.orchestration.backend.exception.TaskNotCancellableException;
 import com.orchestration.backend.exception.TaskNotFoundException;
 import com.orchestration.backend.repository.*;
+import com.orchestration.backend.tracing.TraceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -37,21 +38,23 @@ public class TaskService {
     public PlacementDecisionResponse submit(TaskRequest request,
                                             String idempotencyKey,
                                             String username) {
+        TraceContext ctx = TraceContext.current();
+
         // 1. Verifier idempotency key
-        var existing = taskRepository.findByIdempotencyKey(idempotencyKey);
+        var existing = ctx.timeDb(() -> taskRepository.findByIdempotencyKey(idempotencyKey));
         if (existing.isPresent()) {
             log.info("Tache deja existante pour idempotency key: {}", idempotencyKey);
-            return decisionRepository.findByTask(existing.get())
+            return ctx.timeDb(() -> decisionRepository.findByTask(existing.get()))
                     .map(this::toDecisionResponse)
                     .orElseThrow(() -> new RuntimeException("Decision introuvable"));
         }
 
         // 2. Charger l'utilisateur
-        User user = userRepository.findByUsername(username)
+        User user = ctx.timeDb(() -> userRepository.findByUsername(username))
                 .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouve"));
 
         // 3. Creer la tache avec status PENDING
-        Task task = Task.builder()
+        Task newTask = Task.builder()
                 .cpuRequired(request.getCpuRequired())
                 .memoryRequiredMb(request.getMemoryRequiredMb())
                 .priority(request.getPriority())
@@ -60,30 +63,31 @@ public class TaskService {
                 .idempotencyKey(idempotencyKey)
                 .build();
 
-        task = taskRepository.save(task);
+        final Task task = ctx.timeDb(() -> taskRepository.save(newTask));
 
-        auditService.log("TASK_SUBMITTED", username, "task",
+        ctx.timeDb(() -> auditService.log("TASK_SUBMITTED", username, "task",
                 task.getId().toString(),
-                "{\"cpu\":" + task.getCpuRequired() + ",\"memory\":" + task.getMemoryRequiredMb() + "}");
+                "{\"cpu\":" + task.getCpuRequired() + ",\"memory\":" + task.getMemoryRequiredMb() + "}"));
 
         // 4. Lire la regle active
-        String policy = ruleRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()
+        String policy = ctx.timeDb(ruleRepository::findFirstByIsActiveTrueOrderByCreatedAtDesc)
                 .map(PlacementRule::getPolicy)
                 .orElse("balanced");
 
         // 5. Lire les machines healthy
-        List<Machine> machines = machineRepository.findByHealthyTrue();
+        List<Machine> machines = ctx.timeDb(machineRepository::findByHealthyTrue);
 
         if (machines.isEmpty()) {
             return handleRejection(task, policy, username,
                     "Aucune machine disponible dans le systeme.");
         }
 
-        // 6. Appeler le moteur Python
-        PlacementEngineResult result = placementEngineClient.place(task, machines, policy);
+        // 6. Appeler le moteur Python (logique metier)
+        PlacementEngineResult result = ctx.timeBusiness(
+                () -> placementEngineClient.place(task, machines, policy, ctx.getTraceId()));
 
         // 7. Sauvegarder la decision
-        PlacementDecision decision = PlacementDecision.builder()
+        PlacementDecision newDecision = PlacementDecision.builder()
                 .task(task)
                 .selectedNodeId(result.getSelectedNodeId())
                 .policy(result.getPolicy())
@@ -93,22 +97,23 @@ public class TaskService {
                 .reason(result.getReason())
                 .build();
 
-        decision = decisionRepository.save(decision);
+        final PlacementDecision decision = ctx.timeDb(() -> decisionRepository.save(newDecision));
 
         // 8. Mettre a jour le status de la tache
         task.setStatus(result.getAccepted() ? "PLACED" : "REJECTED");
-        taskRepository.save(task);
+        ctx.timeDb(() -> taskRepository.save(task));
 
         // 8b. Reserver les ressources de la machine retenue
         if (result.getAccepted()) {
-            decrementMachineResources(result.getSelectedNodeId(), task.getCpuRequired(), task.getMemoryRequiredMb());
+            ctx.timeDb(() -> decrementMachineResources(
+                    result.getSelectedNodeId(), task.getCpuRequired(), task.getMemoryRequiredMb()));
         }
 
         // 9. Audit
         String eventType = result.getAccepted() ? "TASK_PLACED" : "TASK_REJECTED";
-        auditService.log(eventType, username, "task",
+        ctx.timeDb(() -> auditService.log(eventType, username, "task",
                 task.getId().toString(),
-                "{\"machine\":\"" + result.getSelectedNodeId() + "\",\"policy\":\"" + policy + "\"}");
+                "{\"machine\":\"" + result.getSelectedNodeId() + "\",\"policy\":\"" + policy + "\"}"));
 
         return toDecisionResponse(decision);
     }
@@ -171,7 +176,9 @@ public class TaskService {
 
     private PlacementDecisionResponse handleRejection(Task task, String policy,
                                                       String username, String reason) {
-        PlacementDecision decision = PlacementDecision.builder()
+        TraceContext ctx = TraceContext.current();
+
+        PlacementDecision newDecision = PlacementDecision.builder()
                 .task(task)
                 .selectedNodeId(null)
                 .policy(policy)
@@ -180,13 +187,14 @@ public class TaskService {
                 .reason(reason)
                 .build();
 
-        decision = decisionRepository.save(decision);
-        task.setStatus("REJECTED");
-        taskRepository.save(task);
+        final Task finalTask = task;
+        final PlacementDecision decision = ctx.timeDb(() -> decisionRepository.save(newDecision));
+        finalTask.setStatus("REJECTED");
+        ctx.timeDb(() -> taskRepository.save(finalTask));
 
-        auditService.log("TASK_REJECTED", username, "task",
-                task.getId().toString(),
-                "{\"reason\":\"" + reason + "\"}");
+        ctx.timeDb(() -> auditService.log("TASK_REJECTED", username, "task",
+                finalTask.getId().toString(),
+                "{\"reason\":\"" + reason + "\"}"));
 
         return toDecisionResponse(decision);
     }

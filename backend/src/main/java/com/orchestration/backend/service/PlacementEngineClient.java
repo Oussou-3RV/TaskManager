@@ -26,7 +26,7 @@ public class PlacementEngineClient {
     private final ObjectMapper objectMapper =  new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
-    public PlacementEngineResult place(Task task, List<Machine> machines, String policy) {
+    public PlacementEngineResult place(Task task, List<Machine> machines, String policy, String traceId) {
         try {
             // Construire le body JSON
             Map<String, Object> body = Map.of(
@@ -52,6 +52,7 @@ public class PlacementEngineClient {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(placementServiceUrl + "/place"))
                     .header("Content-Type", "application/json")
+                    .header("X-Trace-Id", traceId != null ? traceId : "")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                     .build();
 

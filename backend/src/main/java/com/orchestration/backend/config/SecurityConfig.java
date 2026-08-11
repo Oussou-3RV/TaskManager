@@ -1,6 +1,7 @@
 package com.orchestration.backend.config;
 
 import com.orchestration.backend.security.JwtAuthFilter;
+import com.orchestration.backend.tracing.TraceTimingFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +29,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final TraceTimingFilter traceTimingFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -69,7 +71,8 @@ public class SecurityConfig {
                         // Tout le reste necessite authentification
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(traceTimingFilter, JwtAuthFilter.class);
 
         return http.build();
     }
@@ -80,6 +83,9 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of("http://localhost:5173"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        // Sans ceci, le navigateur bloque la lecture JS de ces en-tetes cote frontend
+        // (CORS ne les expose pas par defaut, meme sur une reponse "simple").
+        config.setExposedHeaders(List.of("Server-Timing", "X-Trace-Id"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
