@@ -14,6 +14,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
 import java.util.UUID;
 
 @RestController
@@ -28,8 +29,10 @@ public class TaskController {
             @Valid @RequestBody TaskRequest request,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @AuthenticationPrincipal UserDetails userDetails) {
+        var decision = taskService.submit(request, idempotencyKey, userDetails.getUsername());
         return ResponseEntity.accepted()
-                .body(taskService.submit(request, idempotencyKey, userDetails.getUsername()));
+                .location(URI.create("/api/v1/tasks/" + decision.getTaskId()))
+                .body(decision);
     }
 
     @GetMapping
