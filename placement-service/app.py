@@ -8,6 +8,24 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("placement")
 
+# Seuil au-dela duquel une tache est consideree "lourde" en CPU. Correspond a
+# la capacite d'une machine "fog" typique : en dessous, une machine edge peut
+# suffire ; au-dessus, il faut chercher une machine avec de la place.
+HEAVY_CPU_THRESHOLD = 4.0
+
+
+def select_policy(task: TaskRequest) -> str:
+    """
+    Choisit automatiquement la politique de placement selon la charge de la
+    tache, quand aucune regle admin n'impose explicitement une politique.
+    """
+    if task.cpu_required >= HEAVY_CPU_THRESHOLD:
+        return "least_loaded"  # tache lourde -> eviter une machine deja chargee
+    if task.priority == "high":
+        return "lowest_latency"  # tache urgente -> machine la plus rapide
+    return "balanced"  # cas general
+
+
 @app.get("/health")
 def health():
     return {"status": "up"}
@@ -38,13 +56,18 @@ def place():
         for n in data["nodes"]
     ]
 
-    policy = data.get("policy", "balanced")
+    # "policy" n'est envoye par le backend que si un admin a active une regle
+    # (bascule manuelle) ; sinon, le moteur choisit lui-meme selon la charge.
+    forced_policy = data.get("policy")
+    policy = forced_policy or select_policy(task)
+    auto_selected = forced_policy is None
+
     engine = SimplePlacementEngine(policy=policy)
     decision = engine.place_task(task, nodes)
 
     duration_ms = (time.perf_counter() - start) * 1000
-    logger.info("trace_id=%s task_id=%s duration_ms=%.2f accepted=%s",
-                trace_id, task.id, duration_ms, decision.accepted)
+    logger.info("trace_id=%s task_id=%s policy=%s auto=%s duration_ms=%.2f accepted=%s",
+                trace_id, task.id, policy, auto_selected, duration_ms, decision.accepted)
 
     response = jsonify(decision.to_dict())
     response.headers["X-Trace-Id"] = trace_id

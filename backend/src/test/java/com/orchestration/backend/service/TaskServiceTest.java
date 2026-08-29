@@ -11,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -129,7 +130,7 @@ class TaskServiceTest {
         when(ruleRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()).thenReturn(Optional.empty());
         when(machineRepository.findByHealthyTrue()).thenReturn(List.of(machine));
         when(machineRepository.findById("node-1")).thenReturn(Optional.of(machine));
-        when(placementEngineClient.place(any(), any(), anyString(), anyString())).thenReturn(
+        when(placementEngineClient.place(any(), any(), any(), anyString())).thenReturn(
                 PlacementEngineResult.builder()
                         .accepted(true)
                         .selectedNodeId("node-1")
@@ -146,6 +147,90 @@ class TaskServiceTest {
         assertThat(machine.getCpuAvailable()).isEqualByComparingTo(BigDecimal.valueOf(2));
         assertThat(machine.getMemoryAvailableMb()).isEqualTo(1536);
         verify(machineRepository).save(machine);
+    }
+
+    @Test
+    void submit_noActiveRule_letsPlacementEngineChoosePolicyAutomatically() {
+        Machine machine = Machine.builder()
+                .id("node-1")
+                .cpuAvailable(BigDecimal.valueOf(4))
+                .memoryAvailableMb(2048)
+                .healthy(true)
+                .build();
+
+        when(taskRepository.findByIdempotencyKey(anyString())).thenReturn(Optional.empty());
+        when(userRepository.findByUsername("operateur")).thenReturn(Optional.of(user));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> {
+            Task t = inv.getArgument(0);
+            if (t.getId() == null) t.setId(UUID.randomUUID());
+            return t;
+        });
+        // Aucune regle active en base.
+        when(ruleRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()).thenReturn(Optional.empty());
+        when(machineRepository.findByHealthyTrue()).thenReturn(List.of(machine));
+        when(machineRepository.findById("node-1")).thenReturn(Optional.of(machine));
+        when(placementEngineClient.place(any(), any(), any(), anyString())).thenReturn(
+                PlacementEngineResult.builder()
+                        .accepted(true)
+                        .selectedNodeId("node-1")
+                        .policy("least_loaded") // choisi automatiquement par le moteur
+                        .score(4.0)
+                        .reason("Machine node-1 retenue selon la politique least_loaded.")
+                        .latencyMs(3L)
+                        .build());
+        when(decisionRepository.save(any(PlacementDecision.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        taskService.submit(sampleRequest(), "key-auto", "operateur");
+
+        ArgumentCaptor<String> policyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(placementEngineClient).place(any(), any(), policyCaptor.capture(), anyString());
+        assertThat(policyCaptor.getValue())
+                .as("aucune politique ne doit etre imposee quand aucune regle admin n'est active")
+                .isNull();
+    }
+
+    @Test
+    void submit_withActiveRule_forcesPolicyAsOverride() {
+        Machine machine = Machine.builder()
+                .id("node-1")
+                .cpuAvailable(BigDecimal.valueOf(4))
+                .memoryAvailableMb(2048)
+                .healthy(true)
+                .build();
+        PlacementRule activeRule = PlacementRule.builder()
+                .id(1L)
+                .policy("lowest_latency")
+                .isActive(true)
+                .build();
+
+        when(taskRepository.findByIdempotencyKey(anyString())).thenReturn(Optional.empty());
+        when(userRepository.findByUsername("operateur")).thenReturn(Optional.of(user));
+        when(taskRepository.save(any(Task.class))).thenAnswer(inv -> {
+            Task t = inv.getArgument(0);
+            if (t.getId() == null) t.setId(UUID.randomUUID());
+            return t;
+        });
+        when(ruleRepository.findFirstByIsActiveTrueOrderByCreatedAtDesc()).thenReturn(Optional.of(activeRule));
+        when(machineRepository.findByHealthyTrue()).thenReturn(List.of(machine));
+        when(machineRepository.findById("node-1")).thenReturn(Optional.of(machine));
+        when(placementEngineClient.place(any(), any(), any(), anyString())).thenReturn(
+                PlacementEngineResult.builder()
+                        .accepted(true)
+                        .selectedNodeId("node-1")
+                        .policy("lowest_latency")
+                        .score(0.1)
+                        .reason("Machine node-1 retenue selon la politique lowest_latency.")
+                        .latencyMs(3L)
+                        .build());
+        when(decisionRepository.save(any(PlacementDecision.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        taskService.submit(sampleRequest(), "key-forced", "operateur");
+
+        ArgumentCaptor<String> policyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(placementEngineClient).place(any(), any(), policyCaptor.capture(), anyString());
+        assertThat(policyCaptor.getValue())
+                .as("la regle active doit forcer la politique, en priorite sur le choix automatique")
+                .isEqualTo("lowest_latency");
     }
 
     @Test

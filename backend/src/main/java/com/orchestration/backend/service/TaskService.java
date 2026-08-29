@@ -69,22 +69,24 @@ public class TaskService {
                 task.getId().toString(),
                 "{\"cpu\":" + task.getCpuRequired() + ",\"memory\":" + task.getMemoryRequiredMb() + "}"));
 
-        // 4. Lire la regle active
-        String policy = ctx.timeDb(ruleRepository::findFirstByIsActiveTrueOrderByCreatedAtDesc)
+        // 4. Lire la regle active (bascule manuelle admin). S'il n'y en a pas,
+        // forcedPolicy reste null et le moteur de placement choisit lui-meme
+        // la politique selon la charge de la tache (voir PlacementEngineClient).
+        String forcedPolicy = ctx.timeDb(ruleRepository::findFirstByIsActiveTrueOrderByCreatedAtDesc)
                 .map(PlacementRule::getPolicy)
-                .orElse("balanced");
+                .orElse(null);
 
         // 5. Lire les machines healthy
         List<Machine> machines = ctx.timeDb(machineRepository::findByHealthyTrue);
 
         if (machines.isEmpty()) {
-            return handleRejection(task, policy, username,
+            return handleRejection(task, forcedPolicy != null ? forcedPolicy : "balanced", username,
                     "Aucune machine disponible dans le systeme.");
         }
 
         // 6. Appeler le moteur Python (logique metier)
         PlacementEngineResult result = ctx.timeBusiness(
-                () -> placementEngineClient.place(task, machines, policy, ctx.getTraceId()));
+                () -> placementEngineClient.place(task, machines, forcedPolicy, ctx.getTraceId()));
 
         // 7. Sauvegarder la decision
         PlacementDecision newDecision = PlacementDecision.builder()
@@ -113,7 +115,7 @@ public class TaskService {
         String eventType = result.getAccepted() ? "TASK_PLACED" : "TASK_REJECTED";
         ctx.timeDb(() -> auditService.log(eventType, username, "task",
                 task.getId().toString(),
-                "{\"machine\":\"" + result.getSelectedNodeId() + "\",\"policy\":\"" + policy + "\"}"));
+                "{\"machine\":\"" + result.getSelectedNodeId() + "\",\"policy\":\"" + result.getPolicy() + "\"}"));
 
         return toDecisionResponse(decision);
     }
