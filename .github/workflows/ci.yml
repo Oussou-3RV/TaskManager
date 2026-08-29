@@ -15,6 +15,24 @@ jobs:
   # sous 75%, ce job echoue et GitHub affiche une croix rouge sur le commit.
   backend-tests:
     runs-on: ubuntu-latest
+    # BackendApplicationTests (test preexistant, pas Testcontainers) se
+    # connecte a un vrai Postgres sur localhost:5432, comme en local quand on
+    # lance "docker compose up -d db" avant ./mvnw test. Ce service recree la
+    # meme situation pour la duree du job.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orchestration
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: secret
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U admin -d orchestration"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
