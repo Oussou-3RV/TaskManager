@@ -41,13 +41,24 @@ services:
         condition: service_healthy
       placement:
         condition: service_healthy
+    healthcheck:
+      # Spring Boot (JVM + pool de connexions + migrations Flyway + Hibernate)
+      # demarre beaucoup plus lentement que les services Python/Nginx, surtout
+      # si la machine est chargee. start_period laisse ce temps sans compter
+      # d'echecs contre "retries".
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 120s
 
   frontend:
     build: ./frontend
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
       interval: 5s
