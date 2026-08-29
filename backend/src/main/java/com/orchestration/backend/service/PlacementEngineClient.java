@@ -12,6 +12,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -26,26 +27,32 @@ public class PlacementEngineClient {
     private final ObjectMapper objectMapper =  new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
+    /**
+     * policy peut etre null : dans ce cas, aucune regle admin n'est active et
+     * le moteur de placement (app.py) choisit lui-meme la politique selon la
+     * charge de la tache, au lieu de recevoir une valeur imposee.
+     */
     public PlacementEngineResult place(Task task, List<Machine> machines, String policy, String traceId) {
         try {
             // Construire le body JSON
-            Map<String, Object> body = Map.of(
-                    "task", Map.of(
-                            "id", task.getId().toString(),
-                            "cpu_required", task.getCpuRequired(),
-                            "memory_required_mb", task.getMemoryRequiredMb(),
-                            "priority", task.getPriority()
-                    ),
-                    "nodes", machines.stream().map(m -> Map.of(
-                            "id", m.getId(),
-                            "level", m.getLevel(),
-                            "cpu_available", m.getCpuAvailable(),
-                            "memory_available_mb", m.getMemoryAvailableMb(),
-                            "latency_ms", m.getLatencyMs(),
-                            "healthy", m.getHealthy()
-                    )).toList(),
-                    "policy", policy
-            );
+            Map<String, Object> body = new HashMap<>();
+            body.put("task", Map.of(
+                    "id", task.getId().toString(),
+                    "cpu_required", task.getCpuRequired(),
+                    "memory_required_mb", task.getMemoryRequiredMb(),
+                    "priority", task.getPriority()
+            ));
+            body.put("nodes", machines.stream().map(m -> Map.of(
+                    "id", m.getId(),
+                    "level", m.getLevel(),
+                    "cpu_available", m.getCpuAvailable(),
+                    "memory_available_mb", m.getMemoryAvailableMb(),
+                    "latency_ms", m.getLatencyMs(),
+                    "healthy", m.getHealthy()
+            )).toList());
+            if (policy != null) {
+                body.put("policy", policy);
+            }
 
             String jsonBody = objectMapper.writeValueAsString(body);
 
@@ -81,7 +88,7 @@ public class PlacementEngineClient {
             return PlacementEngineResult.builder()
                     .accepted(false)
                     .selectedNodeId(null)
-                    .policy(policy)
+                    .policy(policy != null ? policy : "balanced")
                     .score(null)
                     .reason("Erreur interne du moteur de placement : " + e.getMessage())
                     .latencyMs(0L)

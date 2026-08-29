@@ -9,6 +9,11 @@
         </BaseCard>
 
         <BaseCard title="Règles de placement">
+            <p class="rules__hint">
+                Une règle active impose sa politique à toutes les tâches, quelle que soit leur charge — utile pour
+                forcer un comportement en cas d'incident. Sans règle active, le moteur de placement choisit
+                lui-même la politique la mieux adaptée à chaque tâche (charge CPU, priorité).
+            </p>
             <BaseTable :columns="columns" :rows="rules" :loading="loading" empty-text="Aucune règle">
                 <template #isActive="{ value }">
                     <BaseBadge :variant="value ? 'success' : 'neutral'">{{ value ? 'Active' : 'Inactive' }}</BaseBadge>
@@ -115,5 +120,11 @@ onMounted(loadRules)
     align-items: flex-end;
     gap: var(--space-lg);
     flex-wrap: wrap;
+}
+
+.rules__hint {
+    margin: 0 0 var(--space-lg);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
 }
 </style>
