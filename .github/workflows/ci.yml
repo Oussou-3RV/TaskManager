@@ -42,6 +42,23 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # Le healthcheck du service Postgres dit "pret", mais il arrive que le
+      # port ne soit pas encore vraiment joignable depuis l'exterieur du
+      # conteneur au meme instant (fragilite connue de GitHub Actions).
+      # Cette attente active evite le "Connection refused" en debut de job.
+      - name: Attendre que Postgres soit vraiment joignable
+        run: |
+          for i in $(seq 1 20); do
+            if (echo > /dev/tcp/localhost/5432) 2>/dev/null; then
+              echo "Postgres joignable."
+              exit 0
+            fi
+            echo "Postgres pas encore joignable, tentative $i..."
+            sleep 2
+          done
+          echo "Timeout en attendant Postgres."
+          exit 1
+
       - name: Tests unitaires + integration + couverture (seuil 75%)
         working-directory: backend
         run: ./mvnw verify
