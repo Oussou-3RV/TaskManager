@@ -14,4 +14,4 @@ down:
 # jamais).
 reset-db:
 	docker compose down -v
-	docker compose up -d db placement backend
+	docker compose up -d
