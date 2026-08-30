@@ -42,6 +42,28 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # TaskApiIntegrationTest appelle le vrai moteur de placement (fourni par
+      # l'enonce) via PLACEMENT_SERVICE_URL. C'est une image custom (pas sur
+      # un registre), donc on la construit et on la lance nous-memes plutot
+      # que via "services:" (qui ne marche qu'avec une image deja publiee).
+      - name: Construire et demarrer le moteur de placement
+        run: |
+          docker build -t placement-service ./placement-service
+          docker run -d --name placement -p 8000:8000 placement-service
+
+      - name: Attendre que le moteur de placement soit pret
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "Moteur de placement pret."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Timeout en attendant le moteur de placement."
+          docker logs placement
+          exit 1
+
       # Le healthcheck du service Postgres dit "pret", mais il arrive que le
       # port ne soit pas encore vraiment joignable depuis l'exterieur du
       # conteneur au meme instant (fragilite connue de GitHub Actions).
