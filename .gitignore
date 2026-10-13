@@ -15,6 +15,7 @@ frontend/dist/
 __pycache__/
 *.pyc
 .venv/
+.schemathesis/
 
 # IDE
 .idea/

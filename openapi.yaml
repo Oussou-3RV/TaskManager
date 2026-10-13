@@ -1,0 +1,685 @@
+openapi: 3.0.3
+info:
+  title: TaskManager — Console d'orchestration
+  description: >
+    API REST permettant à un opérateur de soumettre des tâches à un orchestrateur,
+    de consulter et ajuster les règles de placement, de suivre les décisions en
+    direct et de consulter l'historique des opérations et l'audit.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8080
+    description: Backend local (Docker Compose)
+
+tags:
+  - name: auth
+    description: Authentification
+  - name: tasks
+    description: Soumission et gestion des tâches
+  - name: machines
+    description: État des machines candidates au placement
+  - name: rules
+    description: Règles de placement
+  - name: placements
+    description: Historique des décisions de placement
+  - name: audit
+    description: Événements d'audit (append-only)
+
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Authentifier un utilisateur et obtenir un jeton JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentification réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Identifiants invalides
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/tasks:
+    post:
+      tags: [tasks]
+      operationId: submitTask
+      summary: Soumettre une tâche
+      description: >
+        Déclenche une décision de placement synchrone côté serveur (appel au moteur
+        de placement), mais l'opération est traitée comme asynchrone côté contrat
+        (202 Accepted) car elle engage plusieurs couches (base de données, moteur
+        de placement) dont la durée n'est pas garantie constante.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: >
+            Clé unique fournie par le client. Une retransmission avec la même clé
+            renvoie la décision déjà calculée sans recréer de tâche.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskRequest'
+      responses:
+        '202':
+          description: >
+            Tâche acceptée pour traitement. La décision de placement est retournée
+            directement dans le corps ; en cas de retransmission avec la même
+            Idempotency-Key, la décision existante est renvoyée sans nouvel effet
+            de bord.
+          headers:
+            Location:
+              description: Chemin relatif de la ressource tâche créée
+              schema:
+                type: string
+                example: /api/v1/tasks/3fa85f64-5717-4562-b3fc-2c963f66afa6
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementDecisionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags: [tasks]
+      operationId: listTasks
+      summary: Lister les tâches
+      description: >
+        Par défaut, retourne les tâches de l'utilisateur courant. Le paramètre
+        `all` retourne toutes les tâches (réservé aux rôles autorisés à voir
+        l'ensemble du système).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: all
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - $ref: '#/components/parameters/SortParam'
+      responses:
+        '200':
+          description: Page de tâches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/tasks/{id}:
+    delete:
+      tags: [tasks]
+      operationId: cancelTask
+      summary: Annuler une tâche
+      description: >
+        Annulation immédiate. Seul l'auteur de la tâche peut l'annuler, et
+        uniquement si elle est encore dans un état annulable (PENDING ou PLACED).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Tâche annulée immédiatement
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: L'utilisateur n'est pas l'auteur de la tâche
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Tâche introuvable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: La tâche n'est plus dans un état annulable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/machines:
+    get:
+      tags: [machines]
+      operationId: listMachines
+      summary: Lister les machines et leur état opérationnel
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: healthyOnly
+          in: query
+          description: Ne retourner que les machines en bonne santé
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Liste des machines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MachineResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/rules:
+    get:
+      tags: [rules]
+      operationId: listRules
+      summary: Consulter les règles de placement
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Liste des règles de placement
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlacementRuleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [rules]
+      operationId: createRule
+      summary: Créer une règle de placement
+      description: Réservé au rôle ADMIN.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlacementRuleRequest'
+      responses:
+        '200':
+          description: Règle créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementRuleResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/rules/{id}/toggle:
+    put:
+      tags: [rules]
+      operationId: toggleRule
+      summary: Activer ou désactiver une règle de placement
+      description: Réservé au rôle ADMIN.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Règle mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementRuleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Règle introuvable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/placements:
+    get:
+      tags: [placements]
+      operationId: listPlacementHistory
+      summary: Consulter l'historique des décisions de placement
+      description: >
+        Par défaut, retourne les décisions de l'utilisateur courant. Le paramètre
+        `all` retourne l'ensemble des décisions ; `accepted` filtre sur le résultat
+        du placement.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: all
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: accepted
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - $ref: '#/components/parameters/SortParam'
+      responses:
+        '200':
+          description: Page de l'historique de placement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementHistoryPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/audit:
+    get:
+      tags: [audit]
+      operationId: listAuditEvents
+      summary: Consulter les événements d'audit
+      description: >
+        Réservé aux rôles AUDITOR et ADMIN. Journal en lecture seule (append-only) ;
+        aucune opération de modification n'est exposée.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventType
+          in: query
+          schema:
+            type: string
+        - name: actor
+          in: query
+          schema:
+            type: string
+        - name: machine
+          in: query
+          schema:
+            type: string
+        - name: policy
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - $ref: '#/components/parameters/SortParam'
+      responses:
+        '200':
+          description: Page d'événements d'audit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 0
+    SizeParam:
+      name: size
+      in: query
+      schema:
+        type: integer
+        default: 20
+    SortParam:
+      name: sort
+      in: query
+      description: "Champ et direction de tri, ex. createdAt,desc"
+      schema:
+        type: string
+
+  responses:
+    ValidationError:
+      description: Corps de requête invalide
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unauthorized:
+      description: Authentification requise ou jeton expiré
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Rôle insuffisant pour cette action
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+  schemas:
+    ProblemDetail:
+      type: object
+      description: Format d'erreur conforme à application/problem+json (RFC 7807)
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          description: Référence URI, généralement un chemin relatif (ex. /api/v1/tasks/{id})
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          format: password
+          minLength: 1
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        username:
+          type: string
+        role:
+          type: string
+          enum: [OPERATOR, ADMIN, AUDITOR]
+
+    TaskRequest:
+      type: object
+      required: [cpuRequired, memoryRequiredMb]
+      properties:
+        cpuRequired:
+          type: number
+          format: decimal
+          minimum: 0.1
+          example: 2.5
+        memoryRequiredMb:
+          type: integer
+          minimum: 1
+          example: 512
+        priority:
+          type: string
+          enum: [low, normal, high]
+          default: normal
+
+    TaskResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        cpuRequired:
+          type: number
+          format: decimal
+        memoryRequiredMb:
+          type: integer
+        priority:
+          type: string
+          enum: [low, normal, high]
+        status:
+          type: string
+          enum: [PENDING, PLACED, REJECTED, CANCELLED]
+        submittedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    TaskPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/TaskResponse'
+
+    MachineResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        level:
+          type: string
+        cpuAvailable:
+          type: number
+          format: decimal
+        memoryAvailableMb:
+          type: integer
+        latencyMs:
+          type: number
+          format: decimal
+        healthy:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+
+    PlacementRuleRequest:
+      type: object
+      required: [name, policy]
+      properties:
+        name:
+          type: string
+        policy:
+          type: string
+          enum: [least_loaded, lowest_latency, balanced]
+        isActive:
+          type: boolean
+          default: true
+
+    PlacementRuleResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        policy:
+          type: string
+          enum: [least_loaded, lowest_latency, balanced]
+        isActive:
+          type: boolean
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PlacementDecisionResponse:
+      type: object
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        accepted:
+          type: boolean
+        selectedNodeId:
+          type: string
+          nullable: true
+        policy:
+          type: string
+        score:
+          type: number
+          format: decimal
+          nullable: true
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+
+    PlacementHistoryResponse:
+      type: object
+      properties:
+        decisionId:
+          type: integer
+          format: int64
+        taskId:
+          type: string
+          format: uuid
+        cpuRequired:
+          type: number
+          format: decimal
+        memoryRequiredMb:
+          type: integer
+        priority:
+          type: string
+        submittedBy:
+          type: string
+        accepted:
+          type: boolean
+        selectedNodeId:
+          type: string
+          nullable: true
+        policy:
+          type: string
+        score:
+          type: number
+          format: decimal
+          nullable: true
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+
+    PlacementHistoryPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlacementHistoryResponse'
+
+    AuditEventResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        eventType:
+          type: string
+        actor:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        details:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AuditEventPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditEventResponse'
+
+    PageMetadata:
+      type: object
+      description: Métadonnées de pagination communes à toutes les réponses paginées (Spring Data Page)
+      properties:
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+        number:
+          type: integer
+          description: Numéro de page courante (0-indexé)
+        size:
+          type: integer
